@@ -1,78 +1,49 @@
-pragma solidity 0.7.4;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.7.5;
 
-contract Contract {
-  enum borrowingStatus{ BORROWED, RETURNED }
-  
-  uint booksCount = 0;
-  mapping(uint => Book) public books;
-  
-  mapping(address => Account) libraryAccount;
-  
-  uint historyBlockCount = 0;
-  mapping(uint => HistoryBlock) public borrowingHistory;
+import "./Ownable.sol";
 
-  
-  address owner;
-  
-  modifier onlyOwner() {
-    require(msg.sender == owner);
-    _;
-  }
-  
-  constructor() {
-    owner = msg.sender;
-  }
-  
-  struct Book {
-    uint id;
-    string name;
-    uint stock;
-  }
-  
-  struct Account {
-    // book id, borrowed: true/false
-    mapping(uint => bool) booksBorrowed;
-  }
-  
-  struct HistoryBlock {
-    address account;
-    string book;
-    string transactionType;
-  }
-  
-  function addBook(string memory _name, uint _stock) public onlyOwner {
-    booksCount += 1;
-    books[booksCount] = Book(booksCount, _name, _stock);
-  }
-  
-  function updateStock(uint _id, uint _stock) public onlyOwner {
-    books[_id].stock = _stock;
-  }
-  
-  function borrowBook(uint _id) public {
-    if(
-      libraryAccount[msg.sender].booksBorrowed[_id] != true &&
-      books[_id].stock > 0
-    ) {
-      books[_id].stock -= 1;
-      libraryAccount[msg.sender].booksBorrowed[_id] = true;
-      
-      historyBlockCount += 1;
-      borrowingHistory[historyBlockCount] = HistoryBlock(msg.sender, books[_id].name, 'borrowed');
+contract Contract is Ownable {
+    enum Status{ DEFAULT, BORROWED, RETURNED }
+    
+    struct Book {
+        string title;
+        uint32 stock;
     }
-  }
-  
-  function returnBook(uint _id) public {
-    if(libraryAccount[msg.sender].booksBorrowed[_id] != false) {
-      books[_id].stock += 1;
-      libraryAccount[msg.sender].booksBorrowed[_id] = false;
-      
-      historyBlockCount += 1;
-      borrowingHistory[historyBlockCount] = HistoryBlock(msg.sender, books[_id].name, 'returned');
+    
+    struct Record {
+        address user;
+        Status status;
+        uint date;
     }
-  }
-  
-  function checkAccountAffiliation(address _account, uint _id) public view returns(bool) {
-    return libraryAccount[_account].booksBorrowed[_id];
-  }
+    
+    Book[] public books;
+    mapping(address => mapping(uint32 => Status)) public libraryAccounts;
+    mapping(uint32 => Record[]) public registry;
+    
+    
+    function newBook(string calldata _title, uint32 _quantity) public onlyOwner {
+        books.push(Book(_title, _quantity));
+    }
+    
+    function updateStock(uint32 _id, uint32 _quantity) public onlyOwner {
+        books[_id].stock = _quantity;
+    }
+    
+    function borrowBook(uint32 _id) public {
+        require(libraryAccounts[msg.sender][_id] != Status.BORROWED, "You have already borrowed this book.");
+        require(books[_id].stock > 0, "There are no available copies of this book.");
+        
+        books[_id].stock -= 1;
+        libraryAccounts[msg.sender][_id] = Status.BORROWED;
+        registry[_id].push(Record(msg.sender, Status.BORROWED, block.timestamp));
+    }
+    
+    function returnBook(uint32 _id) public {
+        require(libraryAccounts[msg.sender][_id] == Status.BORROWED, "You currently haven't borrowed this book.");
+        
+        books[_id].stock += 1;
+        libraryAccounts[msg.sender][_id] = Status.RETURNED;
+        registry[_id].push(Record(msg.sender, Status.RETURNED, block.timestamp));
+    }
 }

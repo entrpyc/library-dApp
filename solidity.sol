@@ -1,49 +1,78 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.7.5;
+pragma solidity ^0.7.0;
 
 import "./Ownable.sol";
 
-contract Contract is Ownable {
-    enum Status{ DEFAULT, BORROWED, RETURNED }
+contract Library is Ownable {
+    event BookAdded(uint32 _id, string _title, uint32 _stock);
+    event BookBorrowed(address _userId, uint32 _bookId);
+    event BookReturned(address _userId, uint32 _bookId);
+    event BookStockUpdated(uint32 _id, string _title, uint32 _stock);
     
     struct Book {
+        uint32 id;
         string title;
         uint32 stock;
+        address[] usersThatBorrowedTheBook;
     }
     
     struct Record {
         address user;
-        Status status;
+        bool status;
         uint date;
     }
     
-    Book[] public books;
-    mapping(address => mapping(uint32 => Status)) public libraryAccounts;
-    mapping(uint32 => Record[]) public registry;
+    mapping(uint32 => Book) public books;
+    uint32[] public booksIds;
+    
+    mapping(address => mapping(uint32 => bool)) public userBorrowedBook;
     
     
-    function newBook(string calldata _title, uint32 _quantity) public onlyOwner {
-        books.push(Book(_title, _quantity));
+    function addBook(string calldata _title, uint32 _quantity) public onlyOwner {
+        uint32 _id = uint32(booksIds.length);
+        
+        books[_id] = Book(_id, _title, _quantity, new address[](0));
+        booksIds.push(_id);
+        
+        emit BookAdded(_id, _title, _quantity);
     }
     
     function updateStock(uint32 _id, uint32 _quantity) public onlyOwner {
         books[_id].stock = _quantity;
+        
+        emit BookStockUpdated(_id, books[_id].title, _quantity);
     }
     
     function borrowBook(uint32 _id) public {
-        require(libraryAccounts[msg.sender][_id] != Status.BORROWED, "You have already borrowed this book.");
+        require(userBorrowedBook[msg.sender][_id] == false, "You have already borrowed this book.");
         require(books[_id].stock > 0, "There are no available copies of this book.");
         
         books[_id].stock -= 1;
-        libraryAccounts[msg.sender][_id] = Status.BORROWED;
-        registry[_id].push(Record(msg.sender, Status.BORROWED, block.timestamp));
+        userBorrowedBook[msg.sender][_id] = true;
+        books[_id].usersThatBorrowedTheBook.push(msg.sender);
+        
+        emit BookBorrowed(msg.sender, _id);
     }
     
     function returnBook(uint32 _id) public {
-        require(libraryAccounts[msg.sender][_id] == Status.BORROWED, "You currently haven't borrowed this book.");
+        require(userBorrowedBook[msg.sender][_id] == true, "You currently haven't borrowed this book.");
         
         books[_id].stock += 1;
-        libraryAccounts[msg.sender][_id] = Status.RETURNED;
-        registry[_id].push(Record(msg.sender, Status.RETURNED, block.timestamp));
+        userBorrowedBook[msg.sender][_id] = false;
+        books[_id].usersThatBorrowedTheBook.push(msg.sender);
+        
+         emit BookReturned(msg.sender, _id);
+    }
+    
+    function getBooksIdsLength() public view returns(uint count) {
+        return booksIds.length;
+    }
+    
+    function getBooksIds() public view returns(uint32[] memory){
+        return booksIds;
+    }
+    
+    function getUsersThatBorrowedBook(uint32 _id) public view returns(address[] memory){
+        return books[_id].usersThatBorrowedTheBook;
     }
 }
